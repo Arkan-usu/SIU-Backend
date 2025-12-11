@@ -21,6 +21,64 @@ function authenticateToken(req, res, next) {
   });
 }
 
+// ✅ FIXED: GET /pendaftar/user/:userId - ALL REGISTRATIONS (anggota + kegiatan)
+router.get('/user/:userId', authenticateToken, async (req, res) => {
+  try {
+    const { userId } = req.params;
+    
+    if (req.user.userId != userId && req.user.role !== 'admin') {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+    
+    const result = await db.query(`
+      SELECT r.*, 
+             u.nama as ukm_nama,
+             k.nama as kegiatan_nama,
+             k.link_wa,
+             CASE 
+               WHEN r.status = 'accepted' THEN 'accepted'
+               WHEN r.status = 'rejected' THEN 'rejected' 
+               ELSE 'pending'
+             END as status
+      FROM user_ukm_registrations r
+      JOIN ukm u ON r.ukm_id = u.id
+      LEFT JOIN kegiatan k ON r.kegiatan_id = k.id
+      WHERE r.user_id = $1
+      ORDER BY r.registered_at DESC
+    `, [userId]);
+    
+    res.json(result.rows);
+  } catch (error) {
+    console.error('Error fetching user registrations:', error);
+    res.status(500).json({ error: 'Failed to fetch registrations' });
+  }
+});
+
+// ✅ GET /pendaftar/kegiatan/user/:userId - USER KEGIATAN REGISTRATIONS
+router.get('/kegiatan/user/:userId', authenticateToken, async (req, res) => {
+  try {
+    const { userId } = req.params;
+    
+    if (req.user.userId != userId && req.user.role !== 'admin') {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+    
+    const result = await db.query(`
+      SELECT r.*, u.nama as ukm_nama, k.nama as kegiatan_nama
+      FROM user_ukm_registrations r
+      JOIN ukm u ON r.ukm_id = u.id
+      JOIN kegiatan k ON r.kegiatan_id = k.id
+      WHERE r.user_id = $1 AND r.type = 'kegiatan'
+      ORDER BY r.registered_at DESC
+    `, [userId]);
+    
+    res.json(result.rows);
+  } catch (error) {
+    console.error('Error fetching kegiatan registrations:', error);
+    res.status(500).json({ error: 'Failed to fetch kegiatan registrations' });
+  }
+});
+
 // GET /pendaftar (Admin lihat semua)
 router.get('/', authenticateToken, async (req, res) => {
   try {
